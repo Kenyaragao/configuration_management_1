@@ -1,13 +1,11 @@
 # main.py
 """
-Entry point for the Stage 2 shell emulator (Variant 27).
+Entry point for the Stage 3 shell emulator (Variant 27).
 
-New in Stage 2:
-- Parse command-line arguments for:
-    * VFS physical path
-    * Log file path (XML)
-    * Startup script path
-- Pass configuration to the Shell object.
+Command-line parameters:
+    --vfs PATH    : physical CSV representation of the VFS
+    --log PATH    : XML log file path
+    --script PATH : startup script to execute before interactive mode
 """
 
 from __future__ import annotations
@@ -24,14 +22,14 @@ def parse_args() -> AppConfig:
     Parse command-line arguments and build an AppConfig instance.
     """
     parser = argparse.ArgumentParser(
-        description="Shell emulator (Stage 2, Variant 27)."
+        description="Shell emulator (Stage 3, Variant 27)."
     )
 
     parser.add_argument(
         "--vfs",
         dest="vfs_path",
         type=Path,
-        help="Path to the physical VFS representation on disk.",
+        help="Path to the physical VFS representation on disk (CSV file).",
     )
     parser.add_argument(
         "--log",

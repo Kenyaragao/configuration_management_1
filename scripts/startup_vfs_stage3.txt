@@ -1,0 +1,16 @@
+# Stage 3 startup script – test VFS loading and vfs-save
+
+ls
+cd "/docs"
+
+# Save current VFS to a different CSV file
+vfs-save vfs_saved.csv
+
+# Unknown command to test error handling
+unknown_cmd
+
+# Wrong usage of vfs-save
+vfs-save
+
+# Wrong usage of exit (to test logging and error)
+exit now

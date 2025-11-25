@@ -1,8 +1,3 @@
-# config.py
-"""
-Configuration structures for the shell emulator (Stage 2).
-"""
-
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional

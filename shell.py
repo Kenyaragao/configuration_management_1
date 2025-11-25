@@ -1,21 +1,20 @@
 # shell.py
 """
-Core REPL implementation for the shell emulator (Stage 2, Variant 27).
+Core REPL implementation for the shell emulator (Stage 3, Variant 27).
 
-New in Stage 2:
-- Support configuration via command-line arguments:
-    * VFS physical path
-    * Log file path
-    * Startup script path
-- Print all configuration parameters at startup (debug output).
-- Log command events to an XML file:
-    * username
-    * date and time
-- Support a startup script:
-    * Supports comments using Python-style syntax ('# ...').
-    * During execution, both input (command line) and output are shown,
-      simulating an interactive session.
-    * Errors during script execution are reported.
+Stage 1:
+- Basic REPL, stub commands (ls, cd), exit.
+
+Stage 2:
+- Configuration via command-line arguments.
+- XML logging of command invocations.
+- Startup script with comments, input+output echo, error reporting.
+
+Stage 3:
+- In-memory Virtual File System (VFS) loaded from a CSV file.
+- All VFS operations are in memory only.
+- Report errors when loading VFS (file not found, invalid format).
+- Implement command: vfs-save <path> to save the current VFS state to disk.
 """
 
 from __future__ import annotations
@@ -29,11 +28,12 @@ from parser import parse_command_line
 import commands as cmd_mod
 from config import AppConfig
 from logger_xml import CommandLogger
+from vfs import Vfs, VfsLoadError, VfsSaveError
 
 
 class Shell:
     """
-    Simple interactive shell emulator for Stage 2.
+    Shell emulator for Stage 3.
     """
 
     def __init__(self, config: AppConfig) -> None:
@@ -44,16 +44,23 @@ class Shell:
         self.username: str = getpass.getuser()
         self.hostname: str = socket.gethostname()
 
-        # We don't have a real filesystem/VFS yet, so we fake the "current directory".
-        self.current_dir: str = "~"
+        # Logical "current directory" within the VFS
+        self.current_dir: str = "~"  # will be replaced with VFS-aware path in Stage 4
 
         self._running: bool = True
 
         # XML logger for command events
         self.logger = CommandLogger(config.log_path, self.username)
 
+        # In-memory VFS (initially empty)
+        self.vfs: Vfs = Vfs()
+
         # Print debug info about configuration
         self._print_debug_config()
+
+        # Load VFS from disk if path provided
+        if self.config.vfs_path is not None:
+            self._load_vfs(self.config.vfs_path)
 
     def _print_debug_config(self) -> None:
         """
@@ -68,6 +75,17 @@ class Shell:
     @staticmethod
     def _path_or_none(path: Optional[Path]) -> str:
         return str(path) if path is not None else "(none)"
+
+    def _load_vfs(self, vfs_path: Path) -> None:
+        """
+        Try to load the VFS from the given CSV file.
+        Print an error if anything goes wrong.
+        """
+        try:
+            self.vfs = Vfs.from_csv(vfs_path)
+            print(f"VFS loaded successfully from: {vfs_path}")
+        except VfsLoadError as e:
+            print(f"Error: failed to load VFS from '{vfs_path}': {e}")
 
     def build_prompt(self) -> str:
         """
@@ -178,10 +196,11 @@ class Shell:
         """
         Execute one command.
 
-        Known commands in Stage 2:
-        - ls  (stub)
-        - cd  (stub)
+        Known commands in Stage 3:
+        - ls        (stub)
+        - cd        (stub)
         - exit
+        - vfs-save  (save current VFS to CSV)
         """
         success = True
         error_message: Optional[str] = None
@@ -192,6 +211,8 @@ class Shell:
             cmd_mod.cmd_ls(args)
         elif command == "cd":
             cmd_mod.cmd_cd(args)
+        elif command == "vfs-save":
+            success, error_message = self._handle_vfs_save(args)
         else:
             error_message = f"unknown command '{command}'"
             print(f"Error: {error_message}")
@@ -209,7 +230,7 @@ class Shell:
         """
         Handle the 'exit' command.
 
-        For Stage 2 we still treat any arguments as an error,
+        For now we still treat any arguments as an error,
         just to demonstrate "invalid arguments" handling.
         """
         if args:
@@ -219,3 +240,24 @@ class Shell:
 
         self._running = False
         return True, None
+
+    def _handle_vfs_save(self, args: List[str]) -> Tuple[bool, Optional[str]]:
+        """
+        Handle the 'vfs-save <path>' command.
+
+        Saves the current in-memory VFS to the given CSV file.
+        """
+        if len(args) != 1:
+            msg = "Usage: vfs-save <path-to-csv>"
+            print(msg)
+            return False, "vfs-save called with wrong number of arguments"
+
+        dest_path = Path(args[0])
+
+        try:
+            self.vfs.to_csv(dest_path)
+            print(f"VFS saved successfully to: {dest_path}")
+            return True, None
+        except VfsSaveError as e:
+            print(f"Error: failed to save VFS: {e}")
+            return False, str(e)

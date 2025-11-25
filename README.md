@@ -1,30 +1,28 @@
-# Shell Emulator – Stage 2 (Variant 27)
+# Shell Emulator – Variant 27   
+Stages 1, 2, and 3 (Python Implementation)
 
-This is the Stage 2 implementation of the shell emulator for the course
-"Configuration Management".
+This project is an educational shell emulator developed according to the Variant №27 specification.  
+It is implemented in **Python 3** and grows in complexity across stages.
 
-## New features in Stage 2
+---
 
-- Command-line parameters:
-  - `--vfs PATH` – physical location of the VFS (not used yet, only stored)
-  - `--log PATH` – XML log file path
-  - `--script PATH` – startup script with shell commands
-- Debug output of all configuration parameters at startup.
-- XML logging of command events:
-  - username
-  - timestamp
-  - command name
-  - arguments
-  - success / failure
-  - optional error message
-- Startup script:
-  - supports comments starting with `#`
-  - during execution, both input and output are printed
-  - errors are reported
+## 📌 Stage 1 — Basic REPL Prototype
 
-## How to run
+### Features implemented
+- Console-based application (**CLI**).
+- Interactive REPL:
+  - Displays prompt: `username@hostname:~$`
+  - Reads user input
+  - Parses and executes commands
+  - Loops until `exit` is called
+- Parser supports:
+  - Arguments in quotes (`"..."`)
+  - Error handling for invalid syntax (e.g., missing quotes).
+- Stub commands:
+  - `ls` → prints its name and arguments
+  - `cd` → prints its name and arguments
+- Real command:
+  - `exit` → terminates the emulator  
+    - If arguments are provided → error message.
 
-Interactive only:
-
-```bash
-python main.py
+### Example interaction
