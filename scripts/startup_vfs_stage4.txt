@@ -1,0 +1,30 @@
+# Stage 4 startup script demo
+
+# List root of VFS
+ls
+
+# Change to docs and list
+cd docs
+ls
+
+# Show unique lines of the file
+uniq readme.txt
+
+# Disk usage of current dir
+du
+
+# Go back to root and show /bin size
+cd ..
+du /bin
+
+# Save VFS to another CSV file
+vfs-save backup_from_script.csv
+
+# Try an invalid command to show error handling
+unknown_cmd
+
+# Try wrong usage of du
+du a b
+
+# Exit emulator at the end of the script
+exit

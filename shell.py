@@ -1,20 +1,25 @@
 # shell.py
 """
-Core REPL implementation for the shell emulator (Stage 3, Variant 27).
+Shell emulator for Stage 4 (Variant 27).
 
 Stage 1:
-- Basic REPL, stub commands (ls, cd), exit.
+    - Basic REPL, stub commands (ls, cd), exit.
 
 Stage 2:
-- Configuration via command-line arguments.
-- XML logging of command invocations.
-- Startup script with comments, input+output echo, error reporting.
+    - Configuration via command-line arguments.
+    - XML logging of command invocations.
+    - Startup script with comments, input+output echo, error reporting.
 
 Stage 3:
-- In-memory Virtual File System (VFS) loaded from a CSV file.
-- All VFS operations are in memory only.
-- Report errors when loading VFS (file not found, invalid format).
-- Implement command: vfs-save <path> to save the current VFS state to disk.
+    - In-memory Virtual File System (VFS) loaded from a CSV file.
+    - Command: vfs-save <path> to save VFS back to CSV.
+
+Stage 4:
+    - Real logic for commands: ls, cd (working on the VFS).
+    - New commands:
+        * clear  – clear the console screen.
+        * uniq   – print unique lines of a file (remove adjacent duplicates).
+        * du     – compute disk usage in bytes for a path or current directory.
 """
 
 from __future__ import annotations
@@ -25,7 +30,6 @@ from pathlib import Path
 from typing import List, Tuple, Optional
 
 from parser import parse_command_line
-import commands as cmd_mod
 from config import AppConfig
 from logger_xml import CommandLogger
 from vfs import Vfs, VfsLoadError, VfsSaveError
@@ -33,7 +37,7 @@ from vfs import Vfs, VfsLoadError, VfsSaveError
 
 class Shell:
     """
-    Shell emulator for Stage 3.
+    Shell emulator for Stage 4.
     """
 
     def __init__(self, config: AppConfig) -> None:
@@ -44,8 +48,8 @@ class Shell:
         self.username: str = getpass.getuser()
         self.hostname: str = socket.gethostname()
 
-        # Logical "current directory" within the VFS
-        self.current_dir: str = "~"  # will be replaced with VFS-aware path in Stage 4
+        # Logical "current directory" within the VFS (absolute path)
+        self.current_dir: str = "/"  # will be shown as '~' in the prompt
 
         self._running: bool = True
 
@@ -61,6 +65,8 @@ class Shell:
         # Load VFS from disk if path provided
         if self.config.vfs_path is not None:
             self._load_vfs(self.config.vfs_path)
+
+    # ------------- Initialization helpers -------------
 
     def _print_debug_config(self) -> None:
         """
@@ -87,13 +93,21 @@ class Shell:
         except VfsLoadError as e:
             print(f"Error: failed to load VFS from '{vfs_path}': {e}")
 
+    # ------------- Prompt & main loop -------------
+
     def build_prompt(self) -> str:
         """
         Build the prompt string, e.g.:
 
             username@hostname:~$
+
+        We display '/' as '~' to mimic a typical Unix home directory prompt.
         """
-        return f"{self.username}@{self.hostname}:{self.current_dir}$ "
+        if self.current_dir == "/":
+            path_display = "~"
+        else:
+            path_display = self.current_dir
+        return f"{self.username}@{self.hostname}:{path_display}$ "
 
     def run(self) -> None:
         """
@@ -122,6 +136,8 @@ class Shell:
                 continue
 
             self._process_line(line, from_script=False)
+
+    # ------------- Startup script -------------
 
     def _run_startup_script(self, script_path: Path) -> None:
         """
@@ -157,6 +173,8 @@ class Shell:
 
             # Process the line; any errors will be printed by the parser/dispatcher
             self._process_line(line, from_script=True, script_line_no=line_no)
+
+    # ------------- Command processing -------------
 
     def _process_line(
         self,
@@ -196,11 +214,14 @@ class Shell:
         """
         Execute one command.
 
-        Known commands in Stage 3:
-        - ls        (stub)
-        - cd        (stub)
-        - exit
-        - vfs-save  (save current VFS to CSV)
+        Known commands in Stage 4:
+        - ls        : list directory contents (VFS)
+        - cd        : change current directory (VFS)
+        - clear     : clear the screen
+        - uniq      : print unique lines of a file
+        - du        : disk usage (in bytes) for a path or current dir
+        - vfs-save  : save current VFS to CSV
+        - exit      : terminate the shell
         """
         success = True
         error_message: Optional[str] = None
@@ -208,9 +229,15 @@ class Shell:
         if command == "exit":
             success, error_message = self._handle_exit(args)
         elif command == "ls":
-            cmd_mod.cmd_ls(args)
+            success, error_message = self._handle_ls(args)
         elif command == "cd":
-            cmd_mod.cmd_cd(args)
+            success, error_message = self._handle_cd(args)
+        elif command == "clear":
+            success, error_message = self._handle_clear(args)
+        elif command == "uniq":
+            success, error_message = self._handle_uniq(args)
+        elif command == "du":
+            success, error_message = self._handle_du(args)
         elif command == "vfs-save":
             success, error_message = self._handle_vfs_save(args)
         else:
@@ -226,6 +253,8 @@ class Shell:
             error_message=error_message,
         )
 
+    # ------------- Command handlers -------------
+
     def _handle_exit(self, args: List[str]) -> Tuple[bool, Optional[str]]:
         """
         Handle the 'exit' command.
@@ -240,6 +269,176 @@ class Shell:
 
         self._running = False
         return True, None
+
+    # --- ls ---
+
+    def _handle_ls(self, args: List[str]) -> Tuple[bool, Optional[str]]:
+        """
+        List directory contents.
+
+        Usage:
+            ls              -> list current directory
+            ls <path>       -> list given path (absolute or relative)
+        """
+        if len(args) > 1:
+            msg = "Usage: ls [path]"
+            print(msg)
+            return False, "ls called with too many arguments"
+
+        # Determine target path
+        if args:
+            target = args[0]
+        else:
+            target = self.current_dir
+
+        abs_path = self._make_abs_path(target)
+
+        # Try to list directory or print file name
+        try:
+            from vfs import VfsNode  # local import to avoid circular hints
+
+            node = self.vfs.find_node(abs_path)
+            if node is None:
+                print(f"Error: path not found: {abs_path}")
+                return False, f"path not found: {abs_path}"
+
+            if node.is_dir:
+                entries = self.vfs.list_dir(abs_path)
+                for entry in entries:
+                    suffix = "/" if entry.is_dir else ""
+                    print(entry.name + suffix)
+            else:
+                # If it's a file, just print its name
+                print(node.name)
+            return True, None
+        except (FileNotFoundError, NotADirectoryError) as e:
+            print(f"Error: {e}")
+            return False, str(e)
+
+    # --- cd ---
+
+    def _handle_cd(self, args: List[str]) -> Tuple[bool, Optional[str]]:
+        """
+        Change current directory.
+
+        Usage:
+            cd <path>       (absolute or relative)
+        """
+        if len(args) != 1:
+            msg = "Usage: cd <path>"
+            print(msg)
+            return False, "cd called with wrong number of arguments"
+
+        target = args[0]
+        abs_path = self._make_abs_path(target)
+
+        node = self.vfs.find_node(abs_path)
+        if node is None:
+            msg = f"Error: directory not found: {abs_path}"
+            print(msg)
+            return False, f"directory not found: {abs_path}"
+
+        if not node.is_dir:
+            msg = f"Error: not a directory: {abs_path}"
+            print(msg)
+            return False, f"not a directory: {abs_path}"
+
+        self.current_dir = abs_path
+        return True, None
+
+    # --- clear ---
+
+    def _handle_clear(self, args: List[str]) -> Tuple[bool, Optional[str]]:
+        """
+        Clear the console screen.
+
+        Usage:
+            clear
+        """
+        if args:
+            msg = "Usage: clear"
+            print(msg)
+            return False, "clear called with arguments"
+
+        # ANSI escape sequence to clear screen and move cursor to top-left.
+        # Works in most modern terminals.
+        print("\033[2J\033[H", end="")
+        return True, None
+
+    # --- uniq ---
+
+    def _handle_uniq(self, args: List[str]) -> Tuple[bool, Optional[str]]:
+        """
+        Print unique lines from a file (remove adjacent duplicates).
+
+        Usage:
+            uniq <file-path>
+
+        The file path is interpreted within the VFS.
+        """
+        if len(args) != 1:
+            msg = "Usage: uniq <file-path>"
+            print(msg)
+            return False, "uniq called with wrong number of arguments"
+
+        target = args[0]
+        abs_path = self._make_abs_path(target)
+
+        node = self.vfs.find_node(abs_path)
+        if node is None:
+            msg = f"Error: file not found: {abs_path}"
+            print(msg)
+            return False, f"file not found: {abs_path}"
+
+        if node.is_dir:
+            msg = f"Error: not a file: {abs_path}"
+            print(msg)
+            return False, f"not a file: {abs_path}"
+
+        # Decode file content as text, best-effort
+        text = node.content.decode("utf-8", errors="replace")
+        lines = text.splitlines()
+
+        last_line: Optional[str] = None
+        for line in lines:
+            if line != last_line:
+                print(line)
+                last_line = line
+
+        return True, None
+
+    # --- du ---
+
+    def _handle_du(self, args: List[str]) -> Tuple[bool, Optional[str]]:
+        """
+        Disk usage (in bytes) for a path or the current directory.
+
+        Usage:
+            du              -> size of current directory (recursive)
+            du <path>       -> size of given file or directory
+        """
+        if len(args) > 1:
+            msg = "Usage: du [path]"
+            print(msg)
+            return False, "du called with too many arguments"
+
+        if args:
+            target = args[0]
+        else:
+            target = self.current_dir
+
+        abs_path = self._make_abs_path(target)
+
+        try:
+            size = self.vfs.compute_size(abs_path)
+        except FileNotFoundError as e:
+            print(f"Error: {e}")
+            return False, str(e)
+
+        print(f"{size}\t{abs_path}")
+        return True, None
+
+    # --- vfs-save ---
 
     def _handle_vfs_save(self, args: List[str]) -> Tuple[bool, Optional[str]]:
         """
@@ -261,3 +460,39 @@ class Shell:
         except VfsSaveError as e:
             print(f"Error: failed to save VFS: {e}")
             return False, str(e)
+
+    # ------------- Path helpers -------------
+
+    def _make_abs_path(self, path: str) -> str:
+        """
+        Convert a possibly relative path to an absolute path in the VFS.
+
+        Supports:
+            - absolute paths: "/docs/readme.txt"
+            - relative paths from current_dir: "docs/readme.txt"
+            - '.', '..'
+        """
+        if path.startswith("/"):
+            base_parts: List[str] = []
+            tail = path.lstrip("/")
+        else:
+            # Start from current_dir
+            if self.current_dir == "/":
+                base_parts = []
+            else:
+                base_parts = [p for p in self.current_dir.lstrip("/").split("/") if p]
+            tail = path
+
+        for part in tail.split("/"):
+            if part == "" or part == ".":
+                continue
+            if part == "..":
+                if base_parts:
+                    base_parts.pop()
+                # if already at root, stay there
+            else:
+                base_parts.append(part)
+
+        if not base_parts:
+            return "/"
+        return "/" + "/".join(base_parts)

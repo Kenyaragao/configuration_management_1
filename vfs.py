@@ -1,23 +1,16 @@
 # vfs.py
 """
-In-memory Virtual File System (VFS) for Stage 3 (Variant 27).
+In-memory Virtual File System (VFS) for Stage 3–4 (Variant 27).
 
+Stage 3:
+- Load/save the VFS from/to a CSV file.
 - All operations are in memory.
-- The VFS is loaded from a CSV file.
-- Binary data is stored as base64-encoded strings in the CSV.
-- Nested directories/files are represented by POSIX-like paths, e.g.:
-    /           (root dir)
-    /docs       (dir)
-    /docs/readme.txt  (file)
 
-CSV format:
-
-    path,type,content_base64
-    /,dir,
-    "/docs",dir,
-    "/docs/readme.txt",file,SGVsbG8sIFdvcmxkIQ==
-
-Only service commands (like vfs-save) are allowed to touch the physical CSV file.
+Stage 4:
+- Provide helper methods to:
+    * find nodes by path
+    * list directory contents
+    * compute recursive disk usage (du)
 """
 
 from __future__ import annotations
@@ -77,7 +70,7 @@ class Vfs:
         # Root directory
         self.root = VfsNode(name="/", is_dir=True)
 
-    # ----------- Public API -----------
+    # ----------- Stage 3: load/save CSV -----------
 
     @classmethod
     def from_csv(cls, path: Path) -> "Vfs":
@@ -137,8 +130,6 @@ class Vfs:
         except Exception as e:
             raise VfsSaveError(f"Failed to save VFS to CSV '{path}': {e}") from e
 
-    # ----------- Internal helpers -----------
-
     @staticmethod
     def _insert_row(
         root: VfsNode,
@@ -196,10 +187,6 @@ class Vfs:
         """
         Recursively write `node` and its children as CSV rows.
         """
-        if current_path != "/":
-            # Root is explicitly "/", subpaths are built as POSIX-style
-            pass
-
         # Write this node
         if current_path == "/":
             writer.writerow([current_path, "dir", ""])
@@ -220,3 +207,64 @@ class Vfs:
             else:
                 child_path = f"{current_path}/{child_name}"
             self._write_node_recursive(writer, child_node, child_path)
+
+    # ----------- Stage 4 helpers: ls / cd / du -----------
+
+    def find_node(self, abs_path: str) -> Optional[VfsNode]:
+        """
+        Find a node by absolute path (e.g. '/', '/docs', '/docs/readme.txt').
+
+        Returns:
+            VfsNode if found, otherwise None.
+        """
+        if abs_path == "/":
+            return self.root
+
+        if not abs_path.startswith("/"):
+            # For simplicity we require absolute paths here.
+            return None
+
+        parts = [p for p in abs_path.lstrip("/").split("/") if p]
+        if not parts:
+            return self.root
+
+        current = self.root
+        for part in parts:
+            child = current.children.get(part)
+            if child is None:
+                return None
+            current = child
+        return current
+
+    def list_dir(self, abs_path: str) -> List[VfsNode]:
+        """
+        List the contents of a directory at `abs_path`.
+
+        Raises:
+            FileNotFoundError if not found,
+            NotADirectoryError if not a directory.
+        """
+        node = self.find_node(abs_path)
+        if node is None:
+            raise FileNotFoundError(f"Path not found: {abs_path}")
+        if not node.is_dir:
+            raise NotADirectoryError(f"Not a directory: {abs_path}")
+        # Return children sorted by name
+        return [node.children[name] for name in sorted(node.children.keys())]
+
+    def compute_size(self, abs_path: str) -> int:
+        """
+        Compute recursive size (in bytes) for a file or directory.
+        """
+        node = self.find_node(abs_path)
+        if node is None:
+            raise FileNotFoundError(f"Path not found: {abs_path}")
+        return self._compute_node_size(node)
+
+    def _compute_node_size(self, node: VfsNode) -> int:
+        if not node.is_dir:
+            return len(node.content)
+        total = 0
+        for child in node.children.values():
+            total += self._compute_node_size(child)
+        return total
