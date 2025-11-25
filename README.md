@@ -1,25 +1,30 @@
-# Shell Emulator – Stage 1 (Variant 27)
+# Shell Emulator – Stage 2 (Variant 27)
 
-This is a minimal shell emulator implemented in Python for **Stage 1** of the assignment (Variant 27).
+This is the Stage 2 implementation of the shell emulator for the course
+"Configuration Management".
 
-## Requirements covered
+## New features in Stage 2
 
-According to the specification:
-
-- The application is implemented as a **console (CLI)** program.
-- The prompt is based on real OS data:  
-  `username@hostname:~$`
-- The parser correctly handles **quoted arguments** (single and double quotes).
-- The program reports an error when:
-  - the command is unknown
-  - `exit` is called with invalid arguments
-- Stub commands:
-  - `ls` – prints its name and arguments
-  - `cd` – prints its name and arguments
-- `exit` command terminates the emulator.
-- The shell works in **interactive REPL** mode.
+- Command-line parameters:
+  - `--vfs PATH` – physical location of the VFS (not used yet, only stored)
+  - `--log PATH` – XML log file path
+  - `--script PATH` – startup script with shell commands
+- Debug output of all configuration parameters at startup.
+- XML logging of command events:
+  - username
+  - timestamp
+  - command name
+  - arguments
+  - success / failure
+  - optional error message
+- Startup script:
+  - supports comments starting with `#`
+  - during execution, both input and output are printed
+  - errors are reported
 
 ## How to run
+
+Interactive only:
 
 ```bash
 python main.py

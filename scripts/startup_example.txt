@@ -1,0 +1,8 @@
+# This is a startup script example for the shell emulator.
+# Lines starting with '#' are comments and are ignored.
+
+ls
+ls "folder with spaces" -l
+cd "some directory"
+unknown_command
+exit now
